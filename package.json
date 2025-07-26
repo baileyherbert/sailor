@@ -5,7 +5,11 @@
 		"build": "rimraf dist && tsc",
 		"watch": "rimraf dist && tsc -w"
 	},
+	"bin": {
+		"sailor": "./dist/index.js"
+	},
 	"dependencies": {
+		"@rushstack/ts-command-line": "^5.0.2",
 		"source-map-support": "^0.5.21"
 	},
 	"devDependencies": {
