@@ -9,10 +9,17 @@
 		"sailor": "./dist/index.js"
 	},
 	"dependencies": {
+		"@baileyherbert/container": "^3.0.0",
 		"@rushstack/ts-command-line": "^5.0.2",
+		"configstore": "^7.0.0",
+		"enquirer": "^2.4.1",
+		"kleur": "^4.1.5",
+		"node-fetch": "^3.3.2",
+		"ora": "^8.2.0",
 		"source-map-support": "^0.5.21"
 	},
 	"devDependencies": {
+		"@types/configstore": "^6.0.2",
 		"@types/node": "^22.0.0",
 		"@types/source-map-support": "^0.5.10",
 		"rimraf": "^5.0.5",
