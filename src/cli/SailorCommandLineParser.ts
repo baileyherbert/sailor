@@ -1,7 +1,8 @@
 import { CommandLineFlagParameter, CommandLineParser } from '@rushstack/ts-command-line';
 import { AddAction } from './actions/AddAction';
-import { DeployAction } from './actions/DeployAction';
+import { ListAction } from './actions/ListAction';
 import { RemoveAction } from './actions/RemoveAction';
+import { DeployAction } from './actions/DeployAction';
 import { container } from '@baileyherbert/container';
 import { Logger } from './foundation/Logger';
 import kleur from 'kleur';
@@ -24,6 +25,7 @@ export class SailorCommandLineParser extends CommandLineParser {
 		});
 
 		this.addAction(new AddAction());
+		this.addAction(new ListAction());
 		this.addAction(new RemoveAction());
 		this.addAction(new DeployAction());
 	}
