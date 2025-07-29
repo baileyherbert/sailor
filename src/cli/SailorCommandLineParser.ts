@@ -14,7 +14,7 @@ export class SailorCommandLineParser extends CommandLineParser {
 	public constructor() {
 		super({
 			toolFilename: 'sailor',
-			toolDescription: 'Easily deploy projects to remote servers using portainer.'
+			toolDescription: 'Easily deploy projects to remote servers using portainer.',
 		});
 
 		this._verbose = this.defineFlagParameter({
