@@ -1,6 +1,7 @@
 import { prompt } from 'enquirer';
 import { SailorAction } from '../foundation/SailorAction';
-import { Portainer } from '../../portainer/Portainer';
+import { parseUrlOrFail } from '../support/parsers';
+import { PortainerFactory } from '../../portainer/PortainerFactory';
 
 export class AddAction extends SailorAction {
 	public constructor() {
@@ -20,29 +21,29 @@ export class AddAction extends SailorAction {
 			required: true
 		});
 
-		const portainer = new Portainer(url);
-
-		if (portainer.saved) {
-			this.logger.error('A server already exists with that URL. If you proceed, it will be updated.');
-		}
-
+		const { host } = parseUrlOrFail(url);
 		const { name } = await prompt<{ name: string }>({
 			type: 'input',
 			name: 'name',
 			message: 'Name',
 			required: false,
-			initial: portainer.name,
+			initial: host,
+			validate: (input) => {
+				if (!this.configuration.getNameAvailable(input)) {
+					return 'That name is currently in use by another server!';
+				}
+
+				return true;
+			}
 		});
 
-		await portainer.login();
+		const portainer = await PortainerFactory.createFromLogin(url);
 
 		if (name) {
 			portainer.name = name;
 		}
 
-		const existing = portainer.saved;
 		portainer.save();
-
-		this.logger.info('Successfully %s server!', existing ? 'updated' : 'added');
+		this.logger.info('Successfully added server!');
 	}
 }
