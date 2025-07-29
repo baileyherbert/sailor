@@ -16,7 +16,7 @@ export class AddAction extends SailorAction {
 			type: 'input',
 			name: 'url',
 			message: 'Portainer URL',
-			initial: 'https://portainer.nas.local',
+			initial: 'http://localhost:9443',
 			required: true
 		});
 
