@@ -9,6 +9,7 @@ import { container } from '@baileyherbert/container';
 import { Logger } from '../cli/foundation/Logger';
 import { ConfigurationStore } from '../stores/ConfigurationStore';
 import { PortainerAgent } from './PortainerAgent';
+import { MINIMUM_PORTAINER_VERSION } from '../constants';
 import os from 'os';
 
 export class PortainerClient {
@@ -73,10 +74,19 @@ export class PortainerClient {
 	 * @returns
 	 */
 	public async getUserProfile(jwt?: string) {
-		return this.get<UserResponse>('/users/me', {
-			disableAuthentication: !!jwt,
-			headers: (jwt ? { 'Authorization': `Bearer ${jwt}` } : undefined)
-		});
+		try {
+			return await this.get<UserResponse>('/users/me', {
+				disableAuthentication: !!jwt,
+				headers: (jwt ? { 'Authorization': `Bearer ${jwt}` } : undefined)
+			});
+		}
+		catch (error) {
+			if (error instanceof Error && error.message.includes('Invalid user identifier')) {
+				throw new Error(`Sailor requires a portainer version of at least ${MINIMUM_PORTAINER_VERSION}`);
+			}
+
+			throw error;
+		}
 	}
 
 	/**
