@@ -4,11 +4,18 @@ import { PortainerClient } from './PortainerClient';
 import { AuthenticationMethod } from './enum/AuthenticationMethod';
 import { promptLoginMethod, promptToken, promptUsernamePassword } from '../cli/support/prompts';
 import { ConfigurationStore } from '../stores/ConfigurationStore';
-import { Portainer } from './Portainer';
+import { Portainer, PortainerRegistration } from './Portainer';
 
 export class PortainerFactory {
 	private static logger = container.resolve(Logger);
 	private static configuration = container.resolve(ConfigurationStore);
+
+	/**
+	 * Returns a portainer instance for the given registration.
+	 */
+	public static async createFromRegistration(registration: PortainerRegistration) {
+		return new Portainer(registration.url, registration.username);
+	}
 
 	/**
 	 * Logs into a portainer server and returns an instance. Automatically prompts the user for credentials as needed.

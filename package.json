@@ -1,6 +1,6 @@
 {
 	"private": true,
-	"packageManager": "pnpm@10.13.1",
+	"packageManager": "pnpm@10.14.0",
 	"scripts": {
 		"build": "rimraf dist && tsc",
 		"watch": "rimraf dist && tsc -w"
@@ -11,14 +11,18 @@
 	"dependencies": {
 		"@baileyherbert/container": "^3.0.0",
 		"@rushstack/ts-command-line": "^5.0.2",
+		"command-exists": "^1.2.9",
 		"configstore": "^7.0.0",
 		"enquirer": "^2.4.1",
 		"kleur": "^4.1.5",
 		"node-fetch": "^2.7.0",
 		"ora": "^8.2.0",
-		"source-map-support": "^0.5.21"
+		"simple-git": "^3.28.0",
+		"source-map-support": "^0.5.21",
+		"yaml": "^2.8.0"
 	},
 	"devDependencies": {
+		"@types/command-exists": "^1.2.3",
 		"@types/configstore": "^6.0.2",
 		"@types/node": "^22.0.0",
 		"@types/node-fetch": "^2.6.13",

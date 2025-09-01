@@ -1,6 +1,6 @@
 import { CommandLineStringParameter } from '@rushstack/ts-command-line';
 import { SailorAction } from '../foundation/SailorAction';
-import kleur from 'kleur';
+import { promptServer } from '../support/prompts';
 
 export class RemoveAction extends SailorAction {
 	private _nameParam: CommandLineStringParameter;
@@ -32,64 +32,40 @@ export class RemoveAction extends SailorAction {
 			return;
 		}
 
-		const servers = this._getServerList();
+		const servers = this.configuration.getServers();
 
 		if (servers.length === 0) {
 			this.logger.info('There are no saved servers right now!');
 			return;
 		}
 
-		const { selection } = await this.logger.prompt<{ selection: string }>({
-			type: 'select',
-			name: 'selection',
-			message: 'Choose a server to remove',
-			choices: [
-				{
-					name: 'cancel',
-					message: '<cancel>'
-				},
-				...servers.map((server) => ({
-					name: server.id,
-					message: `${kleur.cyan(`${server.name} (${server.username})`)} at ${server.url}`
-				}))
-			]
-		});
+		const server = await promptServer(servers);
+		const count = this._removeFromId(server.id);
 
-		if (selection === 'cancel') {
-			throw new Error('Aborted');
-		}
-
-		const count = this._removeFromId(selection);
 		this.logger.info(`Removed %d server%s`, count, count !== 1 ? 's' : '');
 
 		return;
 	}
 
-	private _getServerList() {
-		return this.configuration.get('servers');
-	}
-
 	private _removeFromName(name: string) {
-		const servers = this._getServerList();
-		const filtered = servers.filter((server) => server.name !== name);
-		const count = servers.length - filtered.length;
+		const server = this.configuration.getServerFromName(name);
 
-		if (count > 0) {
-			this.configuration.set('servers', filtered);
+		if (server) {
+			this.configuration.removeServer(server);
+			return 1;
 		}
 
-		return count;
+		return 0;
 	}
 
 	private _removeFromId(id: string) {
-		const servers = this._getServerList();
-		const filtered = servers.filter((server) => server.id !== id);
-		const count = servers.length - filtered.length;
+		const server = this.configuration.getServerFromId(id);
 
-		if (count > 0) {
-			this.configuration.set('servers', filtered);
+		if (server) {
+			this.configuration.removeServer(server);
+			return 1;
 		}
 
-		return count;
+		return 0;
 	}
 }

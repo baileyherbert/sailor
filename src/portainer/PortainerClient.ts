@@ -11,6 +11,10 @@ import { ConfigurationStore } from '../stores/ConfigurationStore';
 import { PortainerAgent } from './PortainerAgent';
 import { MINIMUM_PORTAINER_VERSION } from '../constants';
 import os from 'os';
+import { Endpoint } from './models/Endpoint';
+import { Stack } from './models/Stack';
+import { Document, isMap, isScalar, parseDocument, YAMLMap, YAMLOMap } from 'yaml';
+import { isSailorImageTag } from './support/tags';
 
 export class PortainerClient {
 	public readonly host: string;
@@ -33,8 +37,16 @@ export class PortainerClient {
 	/**
 	 * Returns an absolute URL for the given API path.
 	 */
-	public getUrl(path: string) {
-		return this.url + '/api/' + path.replace(/^\/+/, '');
+	public getUrl(path: string, query?: Record<string, any>) {
+		const url = new URL(this.url + '/api/' + path.replace(/^\/+/, ''));
+
+		if (query) {
+			for (const [name, value] of Object.entries(query)) {
+				url.searchParams.set(name, value);
+			}
+		}
+
+		return url.toString();
 	}
 
 	/**
@@ -49,6 +61,114 @@ export class PortainerClient {
 	 */
 	protected getToken() {
 		return this._accessToken;
+	}
+
+	/**
+	 * Returns an array of available endpoints.
+	 */
+	public async getEndpoints() {
+		return this.get<Endpoint[]>('/endpoints');
+	}
+
+	/**
+	 * Returns an array of available stacks, optionally filtered by the given endpoint ID.
+	 */
+	public async getStacks(endpointId?: number) {
+		const stacks = await this.get<Stack[]>('/stacks', {
+			query: {
+				filters: JSON.stringify({ EndpointId: endpointId })
+			}
+		});
+
+		return (stacks
+			.filter((stack) => {
+				if (stack.GitConfig) {
+					this.logger.debug('Skipping stack %s because it is git-based', stack.Id);
+					return false;
+				}
+
+				return true;
+			})
+			.sort((a, b) => a.CreationDate - b.CreationDate)
+		);
+	}
+
+	/**
+	 * Retrieves the raw string content of the YAML configuration for the specified stack. Throws upon failure.
+	 */
+	public async getStackFile(id: number) {
+		const response = await this.get<{ StackFileContent: string }>(`/stacks/${Number(id)}/file`);
+
+		if (response.StackFileContent && typeof response.StackFileContent === 'string') {
+			return response.StackFileContent;
+		}
+
+		this.logger.debug('File response:', response);
+		throw new Error(`Invalid response when retrieving file for stack ${id}`);
+	}
+
+	public async getServices(endpointId?: number) {
+		const stacks = await this.getStacks(endpointId);
+		const results = new Array<PortainerService>();
+
+		for (const stack of stacks) {
+			try {
+				const content = await this.getStackFile(stack.Id);
+				const document = parseDocument(content);
+				const services = document.get('services', true);
+
+				if (!services || !isMap(services)) {
+					throw new Error('Stack configuration file is missing top-level services mapping');
+				}
+
+				services.items.forEach((pair, index) => {
+					try {
+						const nameNode = pair.key;
+						const valueNode = pair.value as YAMLMap | null;
+						const imageNode = valueNode?.get('image', true);
+
+						const name = isScalar(nameNode) && typeof nameNode.value === 'string' ? nameNode.value : null;
+						const image = isScalar(imageNode) && typeof imageNode.value === 'string' ? imageNode.value : null;
+
+						if (name === null) {
+							return this.logger.debug(
+								'Skipping stack %d service at index %d due to missing name',
+								stack.Id,
+								index
+							);
+						}
+
+						if (valueNode === null) {
+							return this.logger.debug(
+								'Skipping stack %d service at index %d due to missing value',
+								stack.Id,
+								index
+							);
+						}
+
+						results.push({
+							stack: {
+								...stack,
+								document
+							},
+							index,
+							name,
+							image,
+							thirdparty: image === null ? false : !isSailorImageTag(image),
+							configuration: valueNode
+						});
+					}
+					catch (error) {
+						this.logger.debug('Skipping stack %d service at index %d due to error:', stack.Id, index, error);
+					}
+				});
+			}
+			catch (error) {
+				this.logger.error('Skipping stack %d due to error:', stack.Id, error);
+			}
+		}
+
+		return results;
 	}
 
 	/**
@@ -220,7 +340,7 @@ export class PortainerClient {
 	 * Sends an HTTP request to the Portainer API with automatic authentication, and returns the parsed response.
 	 */
 	private async _request<T = unknown>(method: string, path: string, init?: PortainerRequestInit) {
-		const url = this.getUrl(path);
+		const url = this.getUrl(path, init?.query);
 
 		this.logger.debug('Request: %s %s', method, url);
 
@@ -272,4 +392,18 @@ export class PortainerClient {
 
 export interface PortainerRequestInit extends RequestInit {
 	disableAuthentication?: boolean;
+	query?: Record<string, any>;
+}
+
+export interface PortainerStack extends Stack {
+	document: Document.Parsed;
+}
+
+export interface PortainerService {
+	stack: PortainerStack;
+	index: number;
+	name: string;
+	image: string | null;
+	thirdparty: boolean;
+	configuration: YAMLOMap;
 }

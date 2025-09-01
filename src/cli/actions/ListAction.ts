@@ -13,19 +13,25 @@ export class ListAction extends SailorAction {
 	}
 
 	protected override async onExecuteAsync() {
-		const configuration = container.resolve(ConfigurationStore);
-		const servers = configuration.get('servers');
+		const servers = this.configuration.getServers();
 
-		for (const server of servers) {
+		if (servers.length) {
 			this.logger.info(
-				` - ${kleur.cyan('%s (%s)')} at %s`,
-				server.name,
-				server.username,
-				server.url,
+				`Found ${kleur.cyan('%d')} registered server%s:`,
+				servers.length,
+				servers.length !== 1 ? 's' : ''
 			);
-		}
 
-		if (!servers.length) {
+			for (const server of servers) {
+				this.logger.info(
+					` - ${kleur.green('%s (%s)')} at ${kleur.yellow('%s')}`,
+					server.name,
+					server.username,
+					server.url,
+				);
+			}
+		}
+		else {
 			this.logger.info('There are no saved servers right now!');
 			this.logger.info(`Add your first server with the ${kleur.cyan('sailor add')} command!`);
 		}
