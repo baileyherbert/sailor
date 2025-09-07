@@ -7,6 +7,7 @@ import { PortainerFactory } from '../../portainer/PortainerFactory';
 import { Endpoint } from '../../portainer/models/Endpoint';
 import { Scalar } from 'yaml';
 import kleur from 'kleur';
+import { createReadStream, unlinkSync } from 'fs';
 
 export class DeployAction extends SailorAction {
 	public constructor() {
@@ -37,9 +38,90 @@ export class DeployAction extends SailorAction {
 		const serviceImageNode = service.configuration.get('image', true) as Scalar;
 
 		const branchName = await promptBranch(branches);
+		const archive = await git.createArchive(branchName, {
+			enableGzip: false
+		});
 
-		// serviceImageNode.value = 'sailor-image:1.0';
-		// service.stack.document.toString({ lineWidth: 0 })
+		this.logger.debug('Created archive at:', archive.path);
+		this.logger.debug('Archive size: %d bytes', archive.size);
+		this.logger.debug('Archive SHA:', archive.sha);
+		this.logger.debug('Archive gzipped:', archive.gzipped ? 'Yes' : 'No');
+
+		const archiveStream = createReadStream(archive.path);
+
+		try {
+			const startTime = Date.now();
+			const elapsed = () => Math.round((Date.now() - startTime) / 10) / 100;
+
+			this.logger.spin('Uploading image to the server...');
+			const response = await server.build(service, archiveStream, archive.sha);
+
+			try { unlinkSync(archive.path); }
+			catch {}
+
+			this.logger.spin('Building image (logs may be buffered)...');
+
+			for await (const line of response.stream) {
+				this.logger.stdout(this._getLine(line));
+			}
+
+			this.logger.info('Built image in %d seconds', elapsed());
+			this.logger.spin(`Updating and restarting service...`);
+
+			if (serviceImageNode.value) {
+				serviceImageNode.comment = ' Previous image: ' + (serviceImageNode.value as string);
+			}
+
+			serviceImageNode.value = response.tags.short;
+
+			const newYaml = service.stack.document.toString({ lineWidth: 0 });
+			await server.updateStackFile(service.stack, newYaml);
+
+			this.logger.stop();
+			this.logger.info(kleur.green('Successfully deployed in %d seconds'), elapsed());
+		}
+		catch (error) {
+			try { unlinkSync(archive.path); }
+			catch {}
+
+			throw error;
+		}
+	}
+
+	private _getLine(input: string) {
+		try {
+			const parsed = JSON.parse(input);
+
+			if (parsed.error || parsed.errorDetail) {
+				throw new LogError(parsed.errorDetail?.message || parsed.error);
+			}
+
+			if (typeof parsed.stream === 'string') {
+				return parsed.stream;
+			}
+
+			if (parsed.status) {
+				const prefix = parsed.id ? `${parsed.id}:` : '';
+				const progress = parsed.progress ?? '';
+				const status = parsed.status;
+
+				return [prefix, status.trim(), progress].filter((i) => i.length > 0).join(' ') + '\n';
+			}
+
+			if (parsed.aux) {
+				if (parsed.aux.ID) {
+					return `=> ${parsed.aux.ID}\n`;
+				}
+			}
+
+			return input + '\n';
+		} catch (error) {
+			if (error instanceof LogError) {
+				throw error;
+			}
+
+			return input + '\n';
+		}
 	}
 
 	private async _getEndpoints(server: Portainer) {
@@ -92,3 +174,5 @@ export class DeployAction extends SailorAction {
 		return service;
 	}
 }
+
+class LogError extends Error {}

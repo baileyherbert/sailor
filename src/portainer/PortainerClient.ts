@@ -15,6 +15,9 @@ import { Endpoint } from './models/Endpoint';
 import { Stack } from './models/Stack';
 import { Document, isMap, isScalar, parseDocument, YAMLMap, YAMLOMap } from 'yaml';
 import { isSailorImageTag } from './support/tags';
+import { ReadStream } from 'fs';
+import { splitStream } from './support/streams';
+import kleur from 'kleur';
 
 export class PortainerClient {
 	public readonly host: string;
@@ -37,12 +40,19 @@ export class PortainerClient {
 	/**
 	 * Returns an absolute URL for the given API path.
 	 */
-	public getUrl(path: string, query?: Record<string, any>) {
+	public getUrl(path: string, query?: Record<string, any> | URLSearchParams) {
 		const url = new URL(this.url + '/api/' + path.replace(/^\/+/, ''));
 
 		if (query) {
-			for (const [name, value] of Object.entries(query)) {
-				url.searchParams.set(name, value);
+			if (query instanceof URLSearchParams) {
+				for (const [name, value] of query.entries()) {
+					url.searchParams.append(name, value);
+				}
+			}
+			else {
+				for (const [name, value] of Object.entries(query)) {
+					url.searchParams.append(name, value);
+				}
 			}
 		}
 
@@ -107,6 +117,12 @@ export class PortainerClient {
 		throw new Error(`Invalid response when retrieving file for stack ${id}`);
 	}
 
+	public async updateStackFile(stack: PortainerStack, content: string) {
+		await this.put(`/stacks/${stack.Id}?endpointId=${stack.EndpointId}`, {
+			stackFileContent: content
+		});
+	}
+
 	public async getServices(endpointId?: number) {
 		const stacks = await this.getStacks(endpointId);
 		const results = new Array<PortainerService>();
@@ -169,6 +185,39 @@ export class PortainerClient {
 		}
 
 		return results;
+	}
+
+	/**
+	 * Builds an image on the server.
+	 */
+	public async build(service: PortainerService, stream: ReadStream, sha: string) {
+		const index = '1';
+		const buildargs = { GIT_SHA: sha, SAILOR_INDEX: index };
+		const prefix = `sailor-${service.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/-{2,}/g, '-')}:`;
+
+		const tagLong = prefix + sha;
+		const tagShort = prefix + index;
+
+		const response = await this._requestRaw('POST', `/endpoints/${service.stack.EndpointId}/docker/build`, {
+			query: new URLSearchParams([
+				['t', prefix + index],
+				['t', prefix + sha],
+				['buildargs', JSON.stringify(buildargs)]
+			]),
+			headers: {
+				'Content-Type': 'application/x-tar',
+				'Accept-Encoding': 'identity'
+			},
+			body: stream
+		});
+
+		return {
+			stream: splitStream(response.body!, '\r\n'),
+			tags: {
+				short: tagShort,
+				long: tagLong
+			}
+		};
 	}
 
 	/**
@@ -341,6 +390,18 @@ export class PortainerClient {
 	 */
 	private async _request<T = unknown>(method: string, path: string, init?: PortainerRequestInit) {
 		const url = this.getUrl(path, init?.query);
+		const response = await this._requestRaw(method, path, init);
+
+		return response.json() as T;
+	}
+
+	/**
+	 * Sends an HTTP request to the Portainer API with automatic authentication, and returns the response object without
+	 * validating the status code or waiting for the response body. This is useful for streaming.
+	 */
+	private async _requestRaw(method: string, path: string, init?: PortainerRequestInit) {
+		await new Promise((r) => setTimeout(r, 750));
+		const url = this.getUrl(path, init?.query);
 
 		this.logger.debug('Request: %s %s', method, url);
 
@@ -386,13 +447,13 @@ export class PortainerClient {
 			throw new Error(`Received erroneous status code ${response.status} from the server`);
 		}
 
-		return response.json() as T;
+		return response;
 	}
 }
 
 export interface PortainerRequestInit extends RequestInit {
 	disableAuthentication?: boolean;
-	query?: Record<string, any>;
+	query?: Record<string, any> | URLSearchParams;
 }
 
 export interface PortainerStack extends Stack {

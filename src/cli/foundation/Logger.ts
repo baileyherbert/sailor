@@ -25,6 +25,34 @@ export class Logger {
 	}
 
 	/**
+	 * Prints raw output to stdout.
+	 */
+	public stdout(content: string | Uint8Array) {
+		if (this._spinner) {
+			this._spinner.clear();
+			process.stdout.write(content);
+			this._spinner.render();
+		}
+		else {
+			process.stdout.write(content);
+		}
+	}
+
+	/**
+	 * Prints raw output to stderr.
+	 */
+	public stderr(content: string | Uint8Array) {
+		if (this._spinner) {
+			this._spinner.clear();
+			process.stderr.write(content);
+			this._spinner.render();
+		}
+		else {
+			process.stdout.write(content);
+		}
+	}
+
+	/**
 	 * Prints error output to stderr.
 	 */
 	public error(...args: any[]) {
